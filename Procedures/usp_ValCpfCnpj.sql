@@ -1,0 +1,116 @@
+USE [ESTUDO]
+GO
+
+/****** Object:  StoredProcedure [dbo].[usp_ValCpfCnpj]    Script Date: 12/11/2013 15:49:09 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+-- Verify that the stored procedure does not already exist.
+IF OBJECT_ID('usp_ValCpfCnpj', 'P') IS NOT NULL
+	DROP PROCEDURE usp_ValCpfCnpj;
+GO
+
+CREATE PROCEDURE [dbo].[usp_ValCpfCnpj] @TEXTO VARCHAR(20)
+	,@RETVAL VARCHAR(10)
+AS
+BEGIN
+	BEGIN TRY
+		--SET @TEXTO = '02.841.834/0001-55'
+		DECLARE @CPF_CNPJ VARCHAR(20)
+
+		SET @CPF_CNPJ = '';
+
+		WITH SPLIT
+		AS (
+			SELECT 1 AS ID
+				,SUBSTRING(@TEXTO, 1, 1) AS LETRA
+			
+			UNION ALL
+			
+			SELECT ID + 1
+				,SUBSTRING(@TEXTO, ID + 1, 1)
+			FROM SPLIT
+			WHERE ID < LEN(@TEXTO)
+			)
+		SELECT @CPF_CNPJ += LETRA
+		FROM SPLIT
+		WHERE LETRA LIKE '[0-9]'
+		OPTION (MAXRECURSION 0)
+
+		IF LEN(@CPF_CNPJ) NOT IN (
+				11
+				,14
+				)
+		BEGIN
+			SELECT 'Inválido'
+
+			RETURN
+		END
+
+		DECLARE @DIGITO1 INT
+			,@DIGITO2 INT
+			,@VALOR1 INT
+			,@VALOR2 INT
+		DECLARE @I INT
+			,@J INT
+			,@TOTAL_TMP INT
+			,@COEFICIENTE_TMP INT
+			,@DIGITO_TMP INT
+			,@VALOR_TMP INT
+
+		SET @DIGITO1 = SUBSTRING(@CPF_CNPJ, LEN(@CPF_CNPJ) - 1, 1)
+		SET @DIGITO2 = SUBSTRING(@CPF_CNPJ, LEN(@CPF_CNPJ), 1)
+		SET @J = 1
+
+		WHILE @J <= 2
+		BEGIN
+			SELECT @TOTAL_TMP = 0
+				,@COEFICIENTE_TMP = 2
+
+			SET @I = ((LEN(@CPF_CNPJ) - 3) + @J)
+
+			WHILE @I >= 0
+			BEGIN
+				SELECT @DIGITO_TMP = SUBSTRING(@CPF_CNPJ, @I, 1)
+					,@TOTAL_TMP = @TOTAL_TMP + (@DIGITO_TMP * @COEFICIENTE_TMP)
+					,@COEFICIENTE_TMP = @COEFICIENTE_TMP + 1
+
+				IF (@COEFICIENTE_TMP > 9)
+					AND LEN(@CPF_CNPJ) = 14
+					SET @COEFICIENTE_TMP = 2
+				SET @I = @I - 1
+			END
+
+			SET @VALOR_TMP = 11 - (@TOTAL_TMP % 11)
+
+			IF (@VALOR_TMP >= 10)
+				SET @VALOR_TMP = 0
+
+			IF @J = 1
+				SET @VALOR1 = @VALOR_TMP
+			ELSE
+				SET @VALOR2 = @VALOR_TMP
+
+			SET @J = @J + 1
+		END
+
+		IF @VALOR1 = @DIGITO1
+			AND @VALOR2 = @DIGITO2
+		BEGIN
+			SET @RETVAL = 'Válido'
+		END
+		ELSE
+		BEGIN
+			SET @RETVAL = 'Inválido'
+		END
+	END TRY
+
+	BEGIN CATCH
+		PRINT 'Documento invalido.'
+	END CATCH
+END
+GO
+
+
